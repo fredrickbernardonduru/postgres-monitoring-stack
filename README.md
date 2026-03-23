@@ -278,6 +278,7 @@ postgres-monitoring-stack/
 ---
 
 ## Dashboards
+![Uploading Screenshot_23-3-2026_2066_.jpeg…]()
 
 All 5 dashboards are hand-built JSON — not imported from Grafana's public library. They are provisioned automatically and appear under **Dashboards → PostgreSQL** immediately after `docker compose up`.
 
