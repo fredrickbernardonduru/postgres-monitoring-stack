@@ -353,6 +353,7 @@ The performance engineering dashboard. This is where you identify which queries 
 **Refresh:** 15 seconds | **Time range:** Last 30 minutes
 
 Open this dashboard when something is blocking production. At 15-second refresh, blocking pairs appear within one scrape cycle of forming.
+![Screenshot_23-3-2026_201340_](https://github.com/user-attachments/assets/608e044e-7660-446a-bb22-e93ed813b924)
 
 **Stat panels:**
 
