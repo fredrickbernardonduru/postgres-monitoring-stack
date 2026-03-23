@@ -1,0 +1,278 @@
+# ============================================================
+#  Custom postgres_exporter Query Configuration
+#  Extends default metrics with DBA-critical observability
+# ============================================================
+
+# ─── pg_stat_statements: Top Query Performance ──────────────
+pg_stat_statements:
+  query: |
+    SELECT
+      userid::text,
+      dbid::text,
+      LEFT(query, 200) AS query,
+      calls,
+      total_exec_time,
+      mean_exec_time,
+      stddev_exec_time,
+      min_exec_time,
+      max_exec_time,
+      rows,
+      shared_blks_hit,
+      shared_blks_read,
+      shared_blks_dirtied,
+      shared_blks_written,
+      local_blks_hit,
+      local_blks_read,
+      temp_blks_read,
+      temp_blks_written,
+      blk_read_time,
+      blk_write_time
+    FROM pg_stat_statements
+    ORDER BY total_exec_time DESC
+    LIMIT 50
+  metrics:
+    - userid:
+        usage: LABEL
+        description: "User OID"
+    - dbid:
+        usage: LABEL
+        description: "Database OID"
+    - query:
+        usage: LABEL
+        description: "Query text (truncated)"
+    - calls:
+        usage: COUNTER
+        description: "Number of times executed"
+    - total_exec_time:
+        usage: COUNTER
+        description: "Total execution time in milliseconds"
+    - mean_exec_time:
+        usage: GAUGE
+        description: "Mean execution time in milliseconds"
+    - stddev_exec_time:
+        usage: GAUGE
+        description: "Std-dev of execution time in milliseconds"
+    - min_exec_time:
+        usage: GAUGE
+        description: "Min execution time in milliseconds"
+    - max_exec_time:
+        usage: GAUGE
+        description: "Max execution time in milliseconds"
+    - rows:
+        usage: COUNTER
+        description: "Total rows retrieved or affected"
+    - shared_blks_hit:
+        usage: COUNTER
+        description: "Shared block cache hits"
+    - shared_blks_read:
+        usage: COUNTER
+        description: "Shared blocks read from disk"
+    - temp_blks_read:
+        usage: COUNTER
+        description: "Temp blocks read"
+    - temp_blks_written:
+        usage: COUNTER
+        description: "Temp blocks written"
+
+# ─── Active Connections Breakdown ───────────────────────────
+pg_active_connections:
+  query: |
+    SELECT
+      state,
+      wait_event_type,
+      COUNT(*) AS count
+    FROM pg_stat_activity
+    WHERE pid <> pg_backend_pid()
+    GROUP BY state, wait_event_type
+  metrics:
+    - state:
+        usage: LABEL
+        description: "Connection state"
+    - wait_event_type:
+        usage: LABEL
+        description: "Wait event type"
+    - count:
+        usage: GAUGE
+        description: "Number of connections"
+
+# ─── Long Running Queries ────────────────────────────────────
+pg_long_running_queries:
+  query: |
+    SELECT
+      COUNT(*) AS count,
+      MAX(EXTRACT(EPOCH FROM (NOW() - query_start))) AS max_age_seconds
+    FROM pg_stat_activity
+    WHERE state = 'active'
+      AND query_start < NOW() - INTERVAL '5 seconds'
+      AND pid <> pg_backend_pid()
+  metrics:
+    - count:
+        usage: GAUGE
+        description: "Number of queries running longer than 5 seconds"
+    - max_age_seconds:
+        usage: GAUGE
+        description: "Age in seconds of the longest running query"
+
+# ─── Blocking Queries ────────────────────────────────────────
+pg_blocking_queries:
+  query: |
+    SELECT
+      COUNT(*) AS blocking_count
+    FROM pg_stat_activity AS blocker
+    JOIN pg_stat_activity AS blocked
+      ON blocker.pid = ANY(pg_blocking_pids(blocked.pid))
+    WHERE blocked.cardinality(pg_blocking_pids(blocked.pid)) > 0
+  metrics:
+    - blocking_count:
+        usage: GAUGE
+        description: "Number of blocking query pairs"
+
+# ─── Table Bloat Estimate ────────────────────────────────────
+pg_table_bloat:
+  query: |
+    SELECT
+      schemaname,
+      tablename,
+      pg_total_relation_size(schemaname || '.' || tablename) AS total_bytes,
+      pg_relation_size(schemaname || '.' || tablename) AS table_bytes,
+      pg_indexes_size(schemaname || '.' || tablename) AS index_bytes
+    FROM pg_tables
+    WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+    ORDER BY total_bytes DESC
+    LIMIT 20
+  metrics:
+    - schemaname:
+        usage: LABEL
+        description: "Schema name"
+    - tablename:
+        usage: LABEL
+        description: "Table name"
+    - total_bytes:
+        usage: GAUGE
+        description: "Total size including indexes in bytes"
+    - table_bytes:
+        usage: GAUGE
+        description: "Table size in bytes"
+    - index_bytes:
+        usage: GAUGE
+        description: "Index size in bytes"
+
+# ─── Index Usage ─────────────────────────────────────────────
+pg_index_usage:
+  query: |
+    SELECT
+      schemaname,
+      tablename,
+      indexname,
+      idx_scan,
+      idx_tup_read,
+      idx_tup_fetch
+    FROM pg_stat_user_indexes
+    ORDER BY idx_scan ASC
+    LIMIT 30
+  metrics:
+    - schemaname:
+        usage: LABEL
+        description: "Schema name"
+    - tablename:
+        usage: LABEL
+        description: "Table name"
+    - indexname:
+        usage: LABEL
+        description: "Index name"
+    - idx_scan:
+        usage: COUNTER
+        description: "Number of index scans"
+    - idx_tup_read:
+        usage: COUNTER
+        description: "Index tuples read"
+    - idx_tup_fetch:
+        usage: COUNTER
+        description: "Live table rows fetched via index"
+
+# ─── Vacuum & Analyse Stats ──────────────────────────────────
+pg_vacuum_stats:
+  query: |
+    SELECT
+      schemaname,
+      relname AS tablename,
+      n_live_tup,
+      n_dead_tup,
+      n_mod_since_analyze,
+      EXTRACT(EPOCH FROM (NOW() - last_vacuum))      AS last_vacuum_seconds_ago,
+      EXTRACT(EPOCH FROM (NOW() - last_autovacuum))  AS last_autovacuum_seconds_ago,
+      EXTRACT(EPOCH FROM (NOW() - last_analyze))     AS last_analyze_seconds_ago,
+      vacuum_count,
+      autovacuum_count,
+      analyze_count,
+      autoanalyze_count
+    FROM pg_stat_user_tables
+    ORDER BY n_dead_tup DESC
+    LIMIT 30
+  metrics:
+    - schemaname:
+        usage: LABEL
+        description: "Schema"
+    - tablename:
+        usage: LABEL
+        description: "Table"
+    - n_live_tup:
+        usage: GAUGE
+        description: "Estimated live rows"
+    - n_dead_tup:
+        usage: GAUGE
+        description: "Estimated dead rows"
+    - n_mod_since_analyze:
+        usage: GAUGE
+        description: "Rows modified since last analyze"
+    - last_vacuum_seconds_ago:
+        usage: GAUGE
+        description: "Seconds since last manual vacuum"
+    - last_autovacuum_seconds_ago:
+        usage: GAUGE
+        description: "Seconds since last autovacuum"
+    - vacuum_count:
+        usage: COUNTER
+        description: "Number of manual vacuums"
+    - autovacuum_count:
+        usage: COUNTER
+        description: "Number of autovacuums"
+
+# ─── Replication Lag ─────────────────────────────────────────
+pg_replication_lag:
+  query: |
+    SELECT
+      application_name,
+      client_addr::text,
+      state,
+      sync_state,
+      COALESCE(EXTRACT(EPOCH FROM (NOW() - pg_last_xact_replay_timestamp())), 0) AS replay_lag_seconds,
+      COALESCE(sent_lsn - write_lsn, 0) AS write_lag_bytes,
+      COALESCE(sent_lsn - flush_lsn, 0) AS flush_lag_bytes,
+      COALESCE(sent_lsn - replay_lsn, 0) AS replay_lag_bytes
+    FROM pg_stat_replication
+  metrics:
+    - application_name:
+        usage: LABEL
+        description: "Replica application name"
+    - client_addr:
+        usage: LABEL
+        description: "Replica IP address"
+    - state:
+        usage: LABEL
+        description: "Replication state"
+    - sync_state:
+        usage: LABEL
+        description: "Sync or async"
+    - replay_lag_seconds:
+        usage: GAUGE
+        description: "Replication lag in seconds"
+    - write_lag_bytes:
+        usage: GAUGE
+        description: "Write lag in bytes"
+    - flush_lag_bytes:
+        usage: GAUGE
+        description: "Flush lag in bytes"
+    - replay_lag_bytes:
+        usage: GAUGE
+        description: "Replay lag in bytes"

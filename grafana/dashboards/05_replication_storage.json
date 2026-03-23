@@ -1,0 +1,154 @@
+{
+  "uid": "postgres-replication-storage",
+  "title": "PostgreSQL — Replication & Storage",
+  "description": "WAL, replication lag, table/index sizes, vacuum health.",
+  "tags": ["postgresql", "replication", "storage", "vacuum"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Replication Lag (s)",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "targets": [{ "expr": "max(pg_replication_lag_replay_lag_seconds)", "legendFormat": "Lag" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 3 }, { "color": "red", "value": 10 }] }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "WAL Write Lag (bytes)",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "targets": [{ "expr": "max(pg_replication_lag_write_lag_bytes)", "legendFormat": "" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Total WAL Generated (5m)",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "targets": [{ "expr": "sum(rate(pg_stat_bgwriter_buffers_alloc[5m])) * 8192", "legendFormat": "" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "unit": "Bps" } }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Checkpoints (5m)",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "targets": [{ "expr": "sum(rate(pg_stat_bgwriter_checkpoints_timed[5m]) + rate(pg_stat_bgwriter_checkpoints_req[5m]))", "legendFormat": "" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Checkpoint Warning (requested > timed)",
+      "description": "High requested checkpoints means WAL is being written too fast.",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "targets": [{ "expr": "sum(rate(pg_stat_bgwriter_checkpoints_req[5m])) / (sum(rate(pg_stat_bgwriter_checkpoints_req[5m])) + sum(rate(pg_stat_bgwriter_checkpoints_timed[5m]))) * 100", "legendFormat": "" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 20 }, { "color": "red", "value": 50 }] }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "BGWriter Buffers Written",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "targets": [{ "expr": "sum(rate(pg_stat_bgwriter_buffers_written[5m]))", "legendFormat": "" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "unit": "iops" } }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Replication Lag Over Time",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        { "expr": "pg_replication_lag_replay_lag_seconds", "legendFormat": "{{application_name}} replay lag (s)" },
+        { "expr": "pg_replication_lag_write_lag_bytes / 1024 / 1024", "legendFormat": "{{application_name}} write lag (MB)" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*MB.*" }, "properties": [{ "id": "unit", "value": "MB" }, { "id": "custom.axisPlacement", "value": "right" }] }
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Checkpoint Activity",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        { "expr": "rate(pg_stat_bgwriter_checkpoints_timed[5m])", "legendFormat": "Timed checkpoints/s" },
+        { "expr": "rate(pg_stat_bgwriter_checkpoints_req[5m])", "legendFormat": "Requested checkpoints/s ⚠️" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Requested checkpoints/s ⚠️" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] }
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "type": "bargauge",
+      "title": "Top 15 Tables by Total Size",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 12 },
+      "targets": [{
+        "expr": "topk(15, pg_table_bloat_total_bytes)",
+        "legendFormat": "{{schemaname}}.{{tablename}}",
+        "instant": true
+      }],
+      "options": { "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "id": 13,
+      "type": "bargauge",
+      "title": "Top 15 Tables by Dead Tuples (Vacuum Needed)",
+      "description": "Tables with many dead tuples need VACUUM. High values cause bloat and slow queries.",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 12 },
+      "targets": [{
+        "expr": "topk(15, pg_vacuum_stats_n_dead_tup)",
+        "legendFormat": "{{schemaname}}.{{tablename}}",
+        "instant": true
+      }],
+      "options": { "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 100000 }, { "color": "red", "value": 1000000 }] }
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "BGWriter Activity (buffer writes by source)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 22 },
+      "targets": [
+        { "expr": "rate(pg_stat_bgwriter_buffers_clean[5m])", "legendFormat": "BGWriter (clean)" },
+        { "expr": "rate(pg_stat_bgwriter_buffers_backend[5m])", "legendFormat": "Backend writes (bad ⚠️)" },
+        { "expr": "rate(pg_stat_bgwriter_buffers_checkpoint[5m])", "legendFormat": "Checkpoint writes" }
+      ],
+      "description": "High 'Backend writes' means shared_buffers is too small or BGWriter isn't keeping up.",
+      "fieldConfig": { "defaults": { "unit": "iops" } }
+    }
+  ]
+}

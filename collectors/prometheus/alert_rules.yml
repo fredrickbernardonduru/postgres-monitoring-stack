@@ -1,0 +1,261 @@
+# ============================================================
+#  Prometheus Alert Rules — PostgreSQL Monitoring Stack
+#  5 categories: Connections, Performance, Locking,
+#                Replication, Storage
+# ============================================================
+
+groups:
+
+  # ─────────────────────────────────────────────────────────
+  # GROUP 1: Connection Alerts
+  # ─────────────────────────────────────────────────────────
+  - name: postgres_connections
+    interval: 30s
+    rules:
+
+      - alert: PostgresHighConnectionUsage
+        expr: |
+          (
+            pg_stat_database_numbackends{datname!~"template.*|postgres"}
+            /
+            pg_settings_max_connections
+          ) * 100 > 80
+        for: 2m
+        labels:
+          severity: warning
+          category: connections
+        annotations:
+          summary: "High PostgreSQL connection usage ({{ $labels.instance }})"
+          description: |
+            Connection usage is at {{ printf "%.1f" $value }}% of max_connections.
+            Over 80% usage risks connection exhaustion and service outages.
+          runbook: "Check pg_stat_activity, consider adding PgBouncer or increasing max_connections."
+
+      - alert: PostgresConnectionExhaustion
+        expr: |
+          (
+            pg_stat_database_numbackends{datname!~"template.*|postgres"}
+            /
+            pg_settings_max_connections
+          ) * 100 > 95
+        for: 1m
+        labels:
+          severity: critical
+          category: connections
+        annotations:
+          summary: "CRITICAL: PostgreSQL near connection exhaustion ({{ $labels.instance }})"
+          description: |
+            Connection usage is at {{ printf "%.1f" $value }}% — new connections will be rejected.
+          runbook: "Run: SELECT pid, query FROM pg_stat_activity WHERE state='idle' ORDER BY state_change LIMIT 20; then terminate stale idle connections."
+
+      - alert: PostgresIdleConnections
+        expr: |
+          pg_active_connections_count{state="idle"} > 50
+        for: 5m
+        labels:
+          severity: warning
+          category: connections
+        annotations:
+          summary: "High idle connection count ({{ $labels.instance }})"
+          description: "{{ $value }} idle connections detected. Consider connection pooling."
+
+  # ─────────────────────────────────────────────────────────
+  # GROUP 2: Performance Alerts
+  # ─────────────────────────────────────────────────────────
+  - name: postgres_performance
+    interval: 30s
+    rules:
+
+      - alert: PostgresLongRunningQueries
+        expr: pg_long_running_queries_count > 0
+        for: 1m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "Long-running queries detected ({{ $labels.instance }})"
+          description: "{{ $value }} queries have been running longer than 5 seconds."
+          runbook: "Run: SELECT pid, now()-query_start AS duration, query FROM pg_stat_activity WHERE state='active' ORDER BY duration DESC;"
+
+      - alert: PostgresLongRunningQueryCritical
+        expr: pg_long_running_queries_max_age_seconds > 300
+        for: 2m
+        labels:
+          severity: critical
+          category: performance
+        annotations:
+          summary: "CRITICAL: Query running for {{ humanizeDuration $value }} ({{ $labels.instance }})"
+          description: "A query has been active for over 5 minutes. This may indicate a stuck transaction."
+          runbook: "Consider calling: SELECT public.kill_long_running_queries(300);"
+
+      - alert: PostgresLowCacheHitRatio
+        expr: |
+          (
+            sum(rate(pg_stat_database_blks_hit{datname!~"template.*|postgres"}[5m]))
+            /
+            (
+              sum(rate(pg_stat_database_blks_hit{datname!~"template.*|postgres"}[5m]))
+              +
+              sum(rate(pg_stat_database_blks_read{datname!~"template.*|postgres"}[5m]))
+            )
+          ) * 100 < 90
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "Low cache hit ratio: {{ printf \"%.1f\" $value }}% ({{ $labels.instance }})"
+          description: |
+            Buffer cache hit ratio is below 90%. Data is being read from disk.
+            Consider increasing shared_buffers.
+
+      - alert: PostgresHighDeadlocks
+        expr: rate(pg_stat_database_deadlocks{datname!~"template.*|postgres"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "Deadlocks detected in {{ $labels.datname }} ({{ $labels.instance }})"
+          description: "Deadlock rate is {{ printf \"%.3f\" $value }} per second."
+          runbook: "Investigate application transaction ordering. Check pg_locks for contention patterns."
+
+      - alert: PostgresHighRollbackRate
+        expr: |
+          (
+            rate(pg_stat_database_xact_rollback{datname!~"template.*|postgres"}[5m])
+            /
+            nullif(rate(pg_stat_database_xact_commit{datname!~"template.*|postgres"}[5m]) + rate(pg_stat_database_xact_rollback{datname!~"template.*|postgres"}[5m]), 0)
+          ) * 100 > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "High rollback rate: {{ printf \"%.1f\" $value }}% ({{ $labels.instance }})"
+          description: "More than 10% of transactions are being rolled back."
+
+      - alert: PostgresHighTempFileUsage
+        expr: rate(pg_stat_database_temp_bytes{datname!~"template.*|postgres"}[5m]) > 10485760
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "Excessive temp file usage ({{ $labels.instance }})"
+          description: "Temp file write rate is {{ humanize $value }}B/s. Queries may need more work_mem."
+
+  # ─────────────────────────────────────────────────────────
+  # GROUP 3: Locking Alerts
+  # ─────────────────────────────────────────────────────────
+  - name: postgres_locks
+    interval: 30s
+    rules:
+
+      - alert: PostgresBlockingQueriesDetected
+        expr: pg_blocking_queries_blocking_count > 0
+        for: 2m
+        labels:
+          severity: warning
+          category: locking
+        annotations:
+          summary: "Blocking queries detected ({{ $labels.instance }})"
+          description: "{{ $value }} query pairs are in a blocking relationship."
+          runbook: "Run: SELECT * FROM public.v_blocking_queries;"
+
+      - alert: PostgresExcessiveLockWaits
+        expr: |
+          sum(pg_active_connections_count{wait_event_type="Lock"}) > 5
+        for: 2m
+        labels:
+          severity: warning
+          category: locking
+        annotations:
+          summary: "Many connections waiting on locks ({{ $labels.instance }})"
+          description: "{{ $value }} connections are waiting to acquire locks."
+
+  # ─────────────────────────────────────────────────────────
+  # GROUP 4: Replication Alerts
+  # ─────────────────────────────────────────────────────────
+  - name: postgres_replication
+    interval: 30s
+    rules:
+
+      - alert: PostgresReplicationLagHigh
+        expr: pg_replication_lag_replay_lag_seconds > 5
+        for: 2m
+        labels:
+          severity: warning
+          category: replication
+        annotations:
+          summary: "Replication lag is {{ humanizeDuration $value }} ({{ $labels.instance }})"
+          description: |
+            Replica {{ $labels.application_name }} is {{ humanizeDuration $value }} behind primary.
+          runbook: "Check network between primary/replica. Inspect pg_stat_replication on primary."
+
+      - alert: PostgresReplicationLagCritical
+        expr: pg_replication_lag_replay_lag_seconds > 30
+        for: 2m
+        labels:
+          severity: critical
+          category: replication
+        annotations:
+          summary: "CRITICAL: Replication lag > 30s ({{ $labels.instance }})"
+          description: "Replica {{ $labels.application_name }} is dangerously behind. Failover may result in data loss."
+
+  # ─────────────────────────────────────────────────────────
+  # GROUP 5: Storage Alerts
+  # ─────────────────────────────────────────────────────────
+  - name: postgres_storage
+    interval: 60s
+    rules:
+
+      - alert: PostgresDatabaseSizeGrowthHigh
+        expr: |
+          (
+            rate(pg_database_size_bytes{datname!~"template.*|postgres"}[1h]) * 3600
+          ) > 1073741824
+        for: 30m
+        labels:
+          severity: warning
+          category: storage
+        annotations:
+          summary: "Database {{ $labels.datname }} growing > 1GB/hr ({{ $labels.instance }})"
+          description: "Unusual data growth detected. Check for runaway inserts or log table bloat."
+
+      - alert: PostgresHighDeadTuples
+        expr: pg_vacuum_stats_n_dead_tup > 1000000
+        for: 30m
+        labels:
+          severity: warning
+          category: storage
+        annotations:
+          summary: "High dead tuple count in {{ $labels.tablename }} ({{ $labels.instance }})"
+          description: "Table {{ $labels.schemaname }}.{{ $labels.tablename }} has {{ $value }} dead tuples. Run VACUUM."
+
+  # ─────────────────────────────────────────────────────────
+  # GROUP 6: PostgreSQL Availability
+  # ─────────────────────────────────────────────────────────
+  - name: postgres_availability
+    interval: 15s
+    rules:
+
+      - alert: PostgresExporterDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "postgres_exporter is DOWN ({{ $labels.instance }})"
+          description: "Cannot scrape PostgreSQL metrics. Database may be unreachable."
+
+      - alert: PgBouncerDown
+        expr: up{job="pgbouncer"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "PgBouncer exporter is DOWN ({{ $labels.instance }})"
+          description: "Cannot scrape PgBouncer metrics."

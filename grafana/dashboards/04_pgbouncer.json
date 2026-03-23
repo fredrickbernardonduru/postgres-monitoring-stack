@@ -1,0 +1,135 @@
+{
+  "uid": "pgbouncer-overview",
+  "title": "PgBouncer — Connection Pool Monitor",
+  "description": "Client connections, pool usage, wait queues, server pool health.",
+  "tags": ["pgbouncer", "connections", "pool", "dba"],
+  "timezone": "browser",
+  "refresh": "15s",
+  "schemaVersion": 38,
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "PgBouncer Status",
+      "gridPos": { "h": 3, "w": 4, "x": 0, "y": 0 },
+      "targets": [{ "expr": "up{job=\"pgbouncer\"}", "legendFormat": "Status" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": 0 }, { "color": "green", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total Client Connections",
+      "gridPos": { "h": 3, "w": 4, "x": 4, "y": 0 },
+      "targets": [{ "expr": "sum(pgbouncer_clients_active_count + pgbouncer_clients_waiting_count)", "legendFormat": "Clients" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 150 }, { "color": "red", "value": 190 }] }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Waiting Clients",
+      "description": "Clients queued waiting for a pool slot. >0 means pool is saturated.",
+      "gridPos": { "h": 3, "w": 4, "x": 8, "y": 0 },
+      "targets": [{ "expr": "sum(pgbouncer_clients_waiting_count)", "legendFormat": "Waiting" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "orange", "value": 1 }, { "color": "red", "value": 10 }] }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Active Server Connections",
+      "gridPos": { "h": 3, "w": 4, "x": 12, "y": 0 },
+      "targets": [{ "expr": "sum(pgbouncer_servers_active_count)", "legendFormat": "Active Servers" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" } } }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Idle Server Connections",
+      "gridPos": { "h": 3, "w": 4, "x": 16, "y": 0 },
+      "targets": [{ "expr": "sum(pgbouncer_servers_idle_count)", "legendFormat": "Idle Servers" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" } } }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Pool Utilisation %",
+      "gridPos": { "h": 3, "w": 4, "x": 20, "y": 0 },
+      "targets": [{ "expr": "round((sum(pgbouncer_servers_active_count) / (sum(pgbouncer_servers_active_count) + sum(pgbouncer_servers_idle_count))) * 100, 1)", "legendFormat": "Pool %" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 }] }
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Client Connections: Active vs Waiting",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 3 },
+      "targets": [
+        { "expr": "sum(pgbouncer_clients_active_count)", "legendFormat": "Active clients" },
+        { "expr": "sum(pgbouncer_clients_waiting_count)", "legendFormat": "Waiting clients ⚠️" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 20 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Waiting clients ⚠️" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Server Pool Usage",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 3 },
+      "targets": [
+        { "expr": "sum(pgbouncer_servers_active_count)", "legendFormat": "Active server conns" },
+        { "expr": "sum(pgbouncer_servers_idle_count)", "legendFormat": "Idle server conns" },
+        { "expr": "sum(pgbouncer_servers_login_count)", "legendFormat": "Login (connecting)" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Query Throughput via PgBouncer",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 11 },
+      "targets": [
+        { "expr": "sum(rate(pgbouncer_stats_total_query_count[1m]))", "legendFormat": "Queries/s" },
+        { "expr": "sum(rate(pgbouncer_stats_total_xact_count[1m]))", "legendFormat": "Transactions/s" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Average Query Wait Time",
+      "description": "Time clients wait in PgBouncer queue before getting a server connection.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 11 },
+      "targets": [
+        { "expr": "pgbouncer_stats_avg_wait_time{}", "legendFormat": "Avg wait time (μs)" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "µs" } }
+    }
+  ]
+}

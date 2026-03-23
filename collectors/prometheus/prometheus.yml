@@ -1,0 +1,55 @@
+# ============================================================
+#  Prometheus Configuration
+#  Scrapes: postgres_exporter, pgbouncer_exporter, self
+# ============================================================
+
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  scrape_timeout:      10s
+  external_labels:
+    environment: "local"
+    cluster:     "postgres-monitoring-stack"
+
+# ─── Alert Rules ─────────────────────────────────────────────
+rule_files:
+  - "/etc/prometheus/alert_rules.yml"
+
+# ─── Alertmanager ────────────────────────────────────────────
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "alertmanager:9093"
+
+# ─── Scrape Targets ──────────────────────────────────────────
+scrape_configs:
+
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # PostgreSQL metrics via postgres_exporter
+  - job_name: "postgres"
+    scrape_interval: 15s
+    scrape_timeout:  10s
+    static_configs:
+      - targets: ["postgres_exporter:9187"]
+        labels:
+          instance: "postgres_primary"
+          env:      "local"
+
+  # PgBouncer metrics
+  - job_name: "pgbouncer"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["pgbouncer_exporter:9127"]
+        labels:
+          instance: "pgbouncer"
+          env:      "local"
+
+  # Alertmanager self-monitoring
+  - job_name: "alertmanager"
+    static_configs:
+      - targets: ["alertmanager:9093"]

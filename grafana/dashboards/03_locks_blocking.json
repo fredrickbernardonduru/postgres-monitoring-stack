@@ -1,0 +1,196 @@
+{
+  "uid": "postgres-locks",
+  "title": "PostgreSQL — Locks & Blocking",
+  "description": "Lock contention, blocking queries, wait events, and deadlock trends.",
+  "tags": ["postgresql", "locks", "blocking", "dba"],
+  "timezone": "browser",
+  "refresh": "15s",
+  "schemaVersion": 38,
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Blocking Query Pairs",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "pg_blocking_queries_blocking_count",
+        "legendFormat": "Blocking Pairs"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "red", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Lock-Waiting Connections",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "targets": [{
+        "expr": "sum(pg_active_connections_count{wait_event_type=\"Lock\"})",
+        "legendFormat": "Lock Waits"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 2 }, { "color": "red", "value": 10 }] }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Deadlocks (1h total)",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "targets": [{
+        "expr": "sum(increase(pg_stat_database_deadlocks{datname!~\"template.*|postgres\"}[1h]))",
+        "legendFormat": "Deadlocks"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "orange", "value": 1 }, { "color": "red", "value": 5 }] }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "ClientRead Waits",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "targets": [{
+        "expr": "sum(pg_active_connections_count{wait_event_type=\"Client\"})",
+        "legendFormat": ""
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "IO Waits",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "targets": [{
+        "expr": "sum(pg_active_connections_count{wait_event_type=\"IO\"})",
+        "legendFormat": ""
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "IPC Waits",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "targets": [{
+        "expr": "sum(pg_active_connections_count{wait_event_type=\"IPC\"})",
+        "legendFormat": ""
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Blocking Queries Over Time",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "pg_blocking_queries_blocking_count",
+          "legendFormat": "Blocking pairs"
+        },
+        {
+          "expr": "sum(pg_active_connections_count{wait_event_type=\"Lock\"})",
+          "legendFormat": "Lock-waiting connections"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 20 } } }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Deadlock Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [{
+        "expr": "sum(rate(pg_stat_database_deadlocks{datname!~\"template.*|postgres\"}[5m]))",
+        "legendFormat": "Deadlocks/s"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 30 },
+          "color": { "mode": "fixed", "fixedColor": "red" }
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "piechart",
+      "title": "Wait Event Type Distribution",
+      "description": "Breakdown of what connections are currently waiting on.",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 12 },
+      "targets": [{
+        "expr": "sum by (wait_event_type) (pg_active_connections_count{wait_event_type!=\"\"})",
+        "legendFormat": "{{wait_event_type}}"
+      }],
+      "options": { "pieType": "pie", "displayLabels": ["name", "percent"] }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Connection States Over Time",
+      "description": "Active vs Idle vs Idle-in-transaction — high idle-in-transaction is a locking red flag.",
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 12 },
+      "targets": [
+        {
+          "expr": "sum(pg_active_connections_count{state=\"active\"})",
+          "legendFormat": "Active"
+        },
+        {
+          "expr": "sum(pg_active_connections_count{state=\"idle\"})",
+          "legendFormat": "Idle"
+        },
+        {
+          "expr": "sum(pg_active_connections_count{state=\"idle in transaction\"})",
+          "legendFormat": "Idle in transaction ⚠️"
+        },
+        {
+          "expr": "sum(pg_active_connections_count{state=\"idle in transaction (aborted)\"})",
+          "legendFormat": "Idle in tx (aborted)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Idle in transaction ⚠️" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Lock Wait Duration (long-running queries proxy)",
+      "description": "Max age of active queries — sustained high values indicate stuck transactions.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "expr": "pg_long_running_queries_max_age_seconds",
+          "legendFormat": "Longest active query (s)"
+        },
+        {
+          "expr": "pg_long_running_queries_count",
+          "legendFormat": "Count of slow queries"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Count of slow queries" }, "properties": [{ "id": "custom.axisPlacement", "value": "right" }] }
+        ]
+      }
+    }
+  ]
+}

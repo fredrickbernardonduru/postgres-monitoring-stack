@@ -1,0 +1,195 @@
+{
+  "uid": "postgres-query-perf",
+  "title": "PostgreSQL — Query Performance",
+  "description": "Deep-dive into pg_stat_statements: slow queries, top consumers, frequency analysis.",
+  "tags": ["postgresql", "queries", "performance", "pg_stat_statements"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "schemaVersion": 38,
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total Queries Tracked",
+      "gridPos": { "h": 3, "w": 4, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "count(pg_stat_statements_calls)",
+        "legendFormat": "Tracked Queries"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } } }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Max Query Mean Time",
+      "gridPos": { "h": 3, "w": 4, "x": 4, "y": 0 },
+      "targets": [{
+        "expr": "max(pg_stat_statements_mean_exec_time)",
+        "legendFormat": "Max Mean Time"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 500 }, { "color": "red", "value": 2000 }] }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Slowest Query Ever (max_exec_time)",
+      "gridPos": { "h": 3, "w": 4, "x": 8, "y": 0 },
+      "targets": [{
+        "expr": "max(pg_stat_statements_max_exec_time)",
+        "legendFormat": "Worst Query Time"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 1000 }, { "color": "red", "value": 5000 }] }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Long-Running Queries Now",
+      "gridPos": { "h": 3, "w": 4, "x": 12, "y": 0 },
+      "targets": [{
+        "expr": "pg_long_running_queries_count",
+        "legendFormat": ""
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "orange", "value": 1 }, { "color": "red", "value": 5 }] }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Longest Active Query (s)",
+      "gridPos": { "h": 3, "w": 4, "x": 16, "y": 0 },
+      "targets": [{
+        "expr": "pg_long_running_queries_max_age_seconds",
+        "legendFormat": ""
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 30 }, { "color": "red", "value": 300 }] }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Temp Files Written (5m)",
+      "gridPos": { "h": 3, "w": 4, "x": 20, "y": 0 },
+      "targets": [{
+        "expr": "sum(rate(pg_stat_database_temp_files[5m]))",
+        "legendFormat": ""
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Top 15 Queries by Total Execution Time",
+      "description": "Queries consuming the most cumulative DB time. These are your primary optimization targets.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 3 },
+      "targets": [{
+        "expr": "topk(15, pg_stat_statements_total_exec_time)",
+        "legendFormat": "{{query}}",
+        "instant": true
+      }],
+      "options": {
+        "sortBy": [{ "displayName": "Value", "desc": true }]
+      },
+      "transformations": [
+        { "id": "labelsToFields", "options": { "valueLabel": "query" } },
+        { "id": "merge" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms" }
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Query Execution Time Distribution (p50/p95/p99 proxy)",
+      "description": "Uses mean ± stddev as proxy for percentile spread across tracked queries.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "targets": [
+        {
+          "expr": "avg(pg_stat_statements_mean_exec_time)",
+          "legendFormat": "Avg Mean Exec Time (ms)"
+        },
+        {
+          "expr": "max(pg_stat_statements_mean_exec_time + pg_stat_statements_stddev_exec_time)",
+          "legendFormat": "Mean + StdDev (spread)"
+        },
+        {
+          "expr": "max(pg_stat_statements_max_exec_time)",
+          "legendFormat": "Worst query max"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "fillOpacity": 15 } } }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Query Call Rate (Frequency)",
+      "description": "Which queries are most frequently executed.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "targets": [{
+        "expr": "topk(5, rate(pg_stat_statements_calls[5m]))",
+        "legendFormat": "{{query}}"
+      }],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Temp Blocks Read/Written (disk spills)",
+      "description": "Temp block usage indicates queries spilling to disk — increase work_mem.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "targets": [
+        {
+          "expr": "sum(rate(pg_stat_statements_temp_blks_read[5m]))",
+          "legendFormat": "Temp blocks read/s"
+        },
+        {
+          "expr": "sum(rate(pg_stat_statements_temp_blks_written[5m]))",
+          "legendFormat": "Temp blocks written/s"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "iops" } }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Block Cache Efficiency (shared hits vs reads)",
+      "description": "High shared_blks_read rate vs hits = cache miss pressure. Increase shared_buffers.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "targets": [
+        {
+          "expr": "sum(rate(pg_stat_statements_shared_blks_hit[5m]))",
+          "legendFormat": "Shared block hits/s"
+        },
+        {
+          "expr": "sum(rate(pg_stat_statements_shared_blks_read[5m]))",
+          "legendFormat": "Shared block reads/s (disk)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "iops" } }
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+# ============================================================
+#  Alertmanager Configuration
+#  Routes alerts by severity and category.
+#  Replace webhook/email values for production use.
+# ============================================================
+
+global:
+  resolve_timeout: 5m
+  # smtp_smarthost:    'smtp.gmail.com:587'
+  # smtp_from:         'alerts@yourdomain.com'
+  # smtp_auth_username: 'alerts@yourdomain.com'
+  # smtp_auth_password: 'your_app_password'
+
+# ─── Alert Templates ─────────────────────────────────────────
+templates:
+  - "/etc/alertmanager/templates/*.tmpl"
+
+# ─── Root Route ──────────────────────────────────────────────
+route:
+  receiver:        "default-receiver"
+  group_by:        ["alertname", "category", "instance"]
+  group_wait:      30s
+  group_interval:  5m
+  repeat_interval: 4h
+
+  routes:
+
+    # Critical alerts: immediate notification, short repeat
+    - match:
+        severity: critical
+      receiver:        "critical-receiver"
+      group_wait:      10s
+      repeat_interval: 30m
+      continue:        false
+
+    # Replication alerts: dedicate channel
+    - match:
+        category: replication
+      receiver:        "dba-receiver"
+      group_wait:      30s
+      repeat_interval: 1h
+      continue:        false
+
+    # Performance alerts
+    - match:
+        category: performance
+      receiver:        "dba-receiver"
+      group_wait:      1m
+      repeat_interval: 2h
+
+# ─── Inhibition Rules ────────────────────────────────────────
+inhibit_rules:
+  # Suppress warning if critical fires for same instance
+  - source_match:
+      severity: "critical"
+    target_match:
+      severity: "warning"
+    equal:
+      - "instance"
+      - "alertname"
+
+  # If exporter is down, suppress all other postgres alerts
+  - source_match:
+      alertname: "PostgresExporterDown"
+    target_match_re:
+      alertname: "Postgres.*"
+    equal:
+      - "instance"
+
+# ─── Receivers ───────────────────────────────────────────────
+receivers:
+
+  - name: "default-receiver"
+    webhook_configs:
+      - url: "http://localhost:5001/webhook"  # Replace with your webhook
+        send_resolved: true
+    # Uncomment for email:
+    # email_configs:
+    #   - to: 'dba-team@yourdomain.com'
+    #     subject: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .GroupLabels.alertname }}'
+    #     send_resolved: true
+
+  - name: "critical-receiver"
+    webhook_configs:
+      - url: "http://localhost:5001/critical"  # Replace with PagerDuty/OpsGenie
+        send_resolved: true
+    # pagerduty_configs:
+    #   - routing_key: 'YOUR_PAGERDUTY_ROUTING_KEY'
+    #     description: '{{ .CommonAnnotations.summary }}'
+
+  - name: "dba-receiver"
+    webhook_configs:
+      - url: "http://localhost:5001/dba"
+        send_resolved: true
+    # slack_configs:
+    #   - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+    #     channel:  '#dba-alerts'
+    #     title:    '{{ .CommonAnnotations.summary }}'
+    #     text:     '{{ .CommonAnnotations.description }}'
+    #     send_resolved: true
