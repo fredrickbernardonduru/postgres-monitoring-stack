@@ -278,7 +278,8 @@ postgres-monitoring-stack/
 ---
 
 ## Dashboards
-![Uploading Screenshot_23-3-2026_2066_.jpeg…]()
+
+![Screenshot_23-3-2026_2066_](https://github.com/user-attachments/assets/e01a4b93-b803-4c8c-b9f3-e0d188c53d16)
 
 All 5 dashboards are hand-built JSON — not imported from Grafana's public library. They are provisioned automatically and appear under **Dashboards → PostgreSQL** immediately after `docker compose up`.
 
@@ -302,6 +303,8 @@ The top-level health screen. Answers "is the database healthy right now?" in a s
 | Deadlocks (5m) | `pg_stat_database_deadlocks` | 0 | — | >0 |
 | Long-Running Queries | `pg_long_running_queries_count` | 0 | >1 | >5 |
 
+
+
 **Timeseries panels:**
 - **Connections Over Time** — per-database with an 80% threshold reference line
 - **Transactions Per Second** — commit rate and rollback rate side by side
@@ -317,6 +320,9 @@ The top-level health screen. Answers "is the database healthy right now?" in a s
 ---
 
 ### Dashboard 2 — Query Performance
+
+![Screenshot_23-3-2026_20745_](https://github.com/user-attachments/assets/8e3188a3-f165-4c3f-8316-b820fd08c709)
+
 
 **URL:** `http://localhost:3000/d/postgres-query-perf`
 **Refresh:** 1 minute | **Requires:** `pg_stat_statements` (enabled by default)
@@ -350,11 +356,13 @@ The performance engineering dashboard. This is where you identify which queries 
 
 ### Dashboard 3 — Locks & Blocking
 
+![Screenshot_23-3-2026_20822_](https://github.com/user-attachments/assets/9d7de84c-bb6a-4dd3-9511-483196c36111)
+
+
 **URL:** `http://localhost:3000/d/postgres-locks`
 **Refresh:** 15 seconds | **Time range:** Last 30 minutes
 
 Open this dashboard when something is blocking production. At 15-second refresh, blocking pairs appear within one scrape cycle of forming.
-![Screenshot_23-3-2026_201340_](https://github.com/user-attachments/assets/608e044e-7660-446a-bb22-e93ed813b924)
 
 **Stat panels:**
 
@@ -381,6 +389,9 @@ SELECT pg_terminate_backend(<blocking_pid>);
 ---
 
 ### Dashboard 4 — PgBouncer Pool
+
+![Screenshot_23-3-2026_20857_](https://github.com/user-attachments/assets/6bfa2ce1-813f-489b-9a85-09f374727860)
+
 
 **URL:** `http://localhost:3000/d/pgbouncer-overview`
 **Refresh:** 15 seconds
